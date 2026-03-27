@@ -217,6 +217,9 @@ def _normalize_email_service_config(
     elif service_type == EmailServiceType.DUCK_MAIL:
         if 'domain' in normalized and 'default_domain' not in normalized:
             normalized['default_domain'] = normalized.pop('domain')
+    elif service_type == EmailServiceType.LUCKMAIL:
+        if 'domain' in normalized and 'preferred_domain' not in normalized:
+            normalized['preferred_domain'] = normalized.pop('domain')
 
     if proxy_url and 'proxy_url' not in normalized:
         normalized['proxy_url'] = proxy_url
@@ -403,6 +406,22 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                         logger.info(f"使用数据库 IMAP 邮箱服务: {db_service.name}")
                     else:
                         raise ValueError("没有可用的 IMAP 邮箱服务，请先在邮箱服务中添加")
+                elif service_type == EmailServiceType.LUCKMAIL:
+                    from ...database.models import EmailService as EmailServiceModel
+
+                    db_service = db.query(EmailServiceModel).filter(
+                        EmailServiceModel.service_type == "luckmail",
+                        EmailServiceModel.enabled == True
+                    ).order_by(EmailServiceModel.priority.asc()).first()
+
+                    if db_service and db_service.config:
+                        config = _normalize_email_service_config(service_type, db_service.config, actual_proxy_url)
+                        crud.update_registration_task(db, task_uuid, email_service_id=db_service.id)
+                        logger.info(f"使用数据库 LuckMail 服务: {db_service.name}")
+                    else:
+                        config = _normalize_email_service_config(service_type, email_service_config or {}, actual_proxy_url)
+                        if not config.get("api_key"):
+                            raise ValueError("没有可用的 LuckMail 服务，请先在邮箱服务中添加并填写 API Key")
                 else:
                     config = email_service_config or {}
 
@@ -1175,6 +1194,11 @@ async def get_available_email_services():
             "available": False,
             "count": 0,
             "services": []
+        },
+        "luckmail": {
+            "available": False,
+            "count": 0,
+            "services": []
         }
     }
 
@@ -1332,6 +1356,26 @@ async def get_available_email_services():
 
         result["imap_mail"]["count"] = len(imap_mail_services)
         result["imap_mail"]["available"] = len(imap_mail_services) > 0
+
+        luckmail_services = db.query(EmailServiceModel).filter(
+            EmailServiceModel.service_type == "luckmail",
+            EmailServiceModel.enabled == True
+        ).order_by(EmailServiceModel.priority.asc()).all()
+
+        for service in luckmail_services:
+            config = service.config or {}
+            result["luckmail"]["services"].append({
+                "id": service.id,
+                "name": service.name,
+                "type": "luckmail",
+                "project_code": config.get("project_code"),
+                "email_type": config.get("email_type"),
+                "preferred_domain": config.get("preferred_domain"),
+                "priority": service.priority
+            })
+
+        result["luckmail"]["count"] = len(luckmail_services)
+        result["luckmail"]["available"] = len(luckmail_services) > 0
 
     return result
 
