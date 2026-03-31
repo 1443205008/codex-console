@@ -7,6 +7,7 @@ Temp-Mail 邮箱服务实现
 import re
 import time
 import json
+import random
 import logging
 from datetime import datetime, timezone
 from email import message_from_string
@@ -50,7 +51,7 @@ class TempMailService(BaseEmailService):
         """
         super().__init__(EmailServiceType.TEMP_MAIL, name)
 
-        required_keys = ["base_url", "admin_password", "domain"]
+        required_keys = ["base_url", "admin_password"]
         missing_keys = [key for key in required_keys if not (config or {}).get(key)]
         if missing_keys:
             raise ValueError(f"缺少必需配置: {missing_keys}")
@@ -61,6 +62,13 @@ class TempMailService(BaseEmailService):
             "max_retries": 3,
         }
         self.config = {**default_config, **(config or {})}
+        self._domains = self._normalize_domains(
+            self.config.get("domains") if self.config.get("domains") is not None else self.config.get("domain")
+        )
+        if not self._domains:
+            raise ValueError("缺少必需配置: ['domain']")
+        self.config["domains"] = self._domains
+        self.config["domain"] = self._domains[0]
 
         # 不走代理，proxy_url=None
         http_config = RequestConfig(
@@ -73,6 +81,26 @@ class TempMailService(BaseEmailService):
         self._email_cache: Dict[str, Dict[str, Any]] = {}
         # 记录每个邮箱上一次成功使用的邮件 ID，避免重复使用旧验证码
         self._last_used_mail_ids: Dict[str, str] = {}
+
+    def _normalize_domains(self, domains: Any) -> List[str]:
+        if isinstance(domains, str):
+            items = re.split(r"[,\n\r]+", domains)
+        elif isinstance(domains, (list, tuple, set)):
+            items = list(domains)
+        else:
+            items = [] if domains is None else [domains]
+
+        normalized: List[str] = []
+        for item in items:
+            domain = str(item or "").strip().lower()
+            if not domain:
+                continue
+            if domain not in normalized:
+                normalized.append(domain)
+        return normalized
+
+    def _choose_domain(self) -> str:
+        return random.choice(self._domains)
 
     def _decode_mime_header(self, value: str) -> str:
         """解码 MIME 头，兼容 RFC 2047 编码主题。"""
@@ -544,7 +572,6 @@ class TempMailService(BaseEmailService):
             - jwt: 用户级 JWT token
             - service_id: 同 email（用作标识）
         """
-        import random
         import string
 
         # 生成随机邮箱名
@@ -553,7 +580,7 @@ class TempMailService(BaseEmailService):
         suffix = ''.join(random.choices(string.ascii_lowercase, k=random.randint(1, 3)))
         name = letters + digits + suffix
 
-        domain = self.config["domain"]
+        domain = self._choose_domain()
         enable_prefix = self.config.get("enable_prefix", True)
 
         body = {

@@ -514,10 +514,15 @@ async function handleAddCustom(e) {
         };
     } else if (subType === 'tempmail') {
         serviceType = 'temp_mail';
+        const tmDomains = String(formData.get('tm_domain') || '')
+            .split(/[,\n]/)
+            .map(item => item.trim())
+            .filter(Boolean);
         config = {
             base_url: formData.get('tm_base_url'),
             admin_password: formData.get('tm_admin_password'),
-            domain: formData.get('tm_domain'),
+            domains: tmDomains,
+            domain: tmDomains[0] || '',
             enable_prefix: true
         };
     } else if (subType === 'duckmail') {
@@ -848,9 +853,14 @@ async function handleEditCustom(e) {
         const apiKey = formData.get('yyds_api_key');
         if (apiKey && apiKey.trim()) config.api_key = apiKey.trim();
     } else if (subType === 'tempmail') {
+        const tmDomains = String(formData.get('tm_domain') || '')
+            .split(/[,\n]/)
+            .map(item => item.trim())
+            .filter(Boolean);
         config = {
             base_url: formData.get('tm_base_url'),
-            domain: formData.get('tm_domain'),
+            domains: tmDomains,
+            domain: tmDomains[0] || '',
             enable_prefix: true
         };
         const pwd = formData.get('tm_admin_password');

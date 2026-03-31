@@ -1322,11 +1322,15 @@ async def get_available_email_services():
 
         for service in temp_mail_services:
             config = service.config or {}
+            domains = config.get("domains") or config.get("domain") or []
+            if isinstance(domains, str):
+                domains = [item.strip() for item in domains.split(",") if item.strip()]
             result["temp_mail"]["services"].append({
                 "id": service.id,
                 "name": service.name,
                 "type": "temp_mail",
                 "domain": config.get("domain"),
+                "domains": domains,
                 "priority": service.priority
             })
 
